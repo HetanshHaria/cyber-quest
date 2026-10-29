@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bomb Timer</title>
+<style>
+:root{--bg:#07070c;--fg:#f4f4f8;--red:#ff2d3d;--green:#22e07a;--muted:#8a8aa0;--panel:#15151f}
+*{box-sizing:border-box;margin:0}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;padding:max(16px,env(safe-area-inset-top)) max(16px,env(safe-area-inset-right)) max(16px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left));user-select:none;-webkit-tap-highlight-color:transparent;transition:background .2s}
+.label{font-weight:900;letter-spacing:.3em;font-size:clamp(14px,3.5vw,20px);color:var(--red)}
+.screen{background:#000;border:4px solid #2a2a38;border-radius:18px;padding:3vh 6vw;box-shadow:inset 0 0 40px rgba(255,45,61,.15)}
+#t{font:700 clamp(90px,26vw,240px)/1 "Courier New",ui-monospace,monospace;color:var(--red);text-shadow:0 0 18px rgba(255,45,61,.8),0 0 40px rgba(255,45,61,.4);font-variant-numeric:tabular-nums;letter-spacing:.04em}
+.led{width:14px;height:14px;border-radius:50%;background:#3a0a0e;margin:0 auto}
+.led.on{background:var(--red);box-shadow:0 0 14px var(--red)}
+.presets,.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+button{font:800 18px system-ui,sans-serif;border:0;border-radius:14px;padding:16px 22px;min-height:56px;min-width:64px;cursor:pointer;color:#fff;background:var(--panel);border:2px solid #2a2a38}
+button:active{transform:scale(.97)}
+.presets button.on{border-color:var(--red);color:var(--red)}
+#start{background:var(--red);border-color:var(--red);min-width:200px;font-size:22px}
+#defuse{background:var(--green);border-color:var(--green);color:#03140a}
+#boom{background:#ff8a1f;border-color:#ff8a1f}
+.msg{font-weight:900;font-size:clamp(48px,14vw,120px);letter-spacing:.04em;text-align:center}
+body.boom{background:var(--red);animation:flash .25s steps(2) 6}
+body.boom #t{color:#fff;text-shadow:none}
+body.safe{background:#062b17}
+body.safe #t{color:var(--green);text-shadow:0 0 18px rgba(34,224,122,.7)}
+@keyframes flash{50%{background:#fff}}
+@media (prefers-reduced-motion:reduce){body.boom{animation:none}}
+.lock{position:fixed;inset:0;z-index:9;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
+.lock input{font:700 28px ui-monospace,monospace;text-align:center;width:200px;padding:12px;border-radius:14px;border:2px solid #2a2a38;background:#000;color:#fff;letter-spacing:.3em}
+#unlock{background:var(--red);border-color:var(--red);min-width:200px}
+.hint{color:var(--muted);font-size:14px;text-align:center}
+body{min-height:100%}
+</style>
+</head>
+<body>
+<form id="lock" class="lock">
+  <div class="label">HOST ONLY</div>
+  <label for="pin" style="font-weight:700">Admin PIN</label>
+  <input id="pin" type="password" inputmode="numeric" maxlength="6" autocomplete="off">
+  <button type="submit" id="unlock">Unlock</button>
+  <p class="hint" id="pinMsg"></p>
+</form>
+<div class="label">CYBER BOMB</div>
+<div class="screen"><div class="led" id="led"></div><div id="t">00:10</div></div>
+<div class="msg" id="msg" hidden></div>
+<div class="presets" id="presets"></div>
+<div class="row" id="run" hidden>
+  <button id="defuse">Right wire ✓</button>
+  <button id="boom">Wrong wire ✗</button>
+</div>
+<div class="row"><button id="start">START</button><button id="reset" hidden style="background:#2a2a38;min-width:140px">↺ Reset</button></div>
+<button id="mute" style="min-height:44px;padding:8px 16px;font-size:15px">🔊 Sound on</button>
+<p class="hint">Tap START when the player picks a wire. Sound on for beeps.</p>
+<script>
+const $=id=>document.getElementById(id);
+let total=10,left=10,timer=null,ac=null;
+[10,15,30].forEach(s=>{const b=document.createElement("button");b.textContent=s+"s";b.onclick=()=>{if(timer)return;total=s;reset()};$("presets").appendChild(b)});
+const fmt=s=>"00:"+String(Math.max(0,Math.ceil(s))).padStart(2,"0");
+function beep(f,d,v=.2){tone(f,d,{v})}
+let muted=false;
+function A(){ac=ac||new (window.AudioContext||window.webkitAudioContext)();if(ac.state==="suspended")ac.resume();return ac}
+function tone(f,d,{type="square",v=.2,at=0,to=null}={}){if(muted)return;try{const a=A(),t=a.currentTime+at,o=a.createOscillator(),g=a.createGain();o.type=type;o.frequency.setValueAtTime(f,t);if(to)o.frequency.exponentialRampToValueAtTime(to,t+d);g.gain.setValueAtTime(v,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(a.destination);o.start(t);o.stop(t+d)}catch(e){}}
+function noise(d,{v=.5,f1=3000,f2=80,at=0}={}){if(muted)return;try{const a=A(),t=a.currentTime+at,n=a.sampleRate*d,b=a.createBuffer(1,n,a.sampleRate),c=b.getChannelData(0);for(let i=0;i<n;i++)c[i]=(Math.random()*2-1)*Math.pow(1-i/n,1.5);const s=a.createBufferSource();s.buffer=b;const fl=a.createBiquadFilter();fl.type="lowpass";fl.frequency.setValueAtTime(f1,t);fl.frequency.exponentialRampToValueAtTime(f2,t+d);const g=a.createGain();g.gain.value=v;s.connect(fl);fl.connect(g);g.connect(a.destination);s.start(t)}catch(e){}}
+const SFX={
+ arm(){tone(300,.12,{to:900});tone(900,.12,{at:.13,to:1500});tone(1500,.08,{at:.27,type:"sine"})},
+ tick(){tone(1800,.03,{type:"square",v:.12});noise(.04,{v:.15,f1:6000,f2:2000})},
+ tock(){tone(1200,.03,{type:"square",v:.1})},
+ alarm(){tone(1400,.09,{v:.25});tone(1400,.09,{at:.15,v:.25})},
+ snip(){noise(.06,{v:.6,f1:8000,f2:3000});tone(2500,.04,{type:"triangle",v:.15,at:.02})},
+ safe(){[523,659,784,1047].forEach((f,i)=>tone(f,.18,{type:"triangle",v:.22,at:.1+i*.12}));tone(1568,.5,{type:"sine",v:.12,at:.6})},
+ boom(){noise(1.8,{v:1,f1:2500,f2:40});tone(120,1.2,{type:"sawtooth",v:.4,to:30});noise(.9,{v:.5,f1:900,f2:60,at:.25})}
+};
+
+function paint(){$("t").textContent=fmt(left);[...$("presets").children].forEach(b=>b.classList.toggle("on",parseInt(b.textContent)===total))}
+function end(kind){clearInterval(timer);timer=null;$("run").hidden=true;$("reset").hidden=false;$("start").hidden=true;$("led").classList.remove("on");
+  const m=$("msg");m.hidden=false;
+  if(kind==="safe"){document.body.className="safe";m.textContent="DEFUSED!";m.style.color="var(--green)";SFX.snip();SFX.safe();}
+  else{document.body.className="boom";m.textContent="BOOM!";m.style.color="#fff";SFX.boom();try{navigator.vibrate&&navigator.vibrate([300,100,300])}catch(e){}}}
+function start(){if(timer)return;left=total;document.body.className="";$("msg").hidden=true;$("run").hidden=false;$("start").hidden=true;$("reset").hidden=false;
+  const t0=Date.now();let last=Math.ceil(left);paint();SFX.arm();
+  timer=setInterval(()=>{left=total-(Date.now()-t0)/1000;const c=Math.ceil(left);
+    if(c!==last){last=c;c<=3&&c>0?SFX.alarm():(c%2?SFX.tick():SFX.tock());$("led").classList.toggle("on")}
+    paint();if(left<=0)end("boom")},50)}
+function reset(){clearInterval(timer);timer=null;left=total;document.body.className="";$("msg").hidden=true;$("run").hidden=true;$("start").hidden=false;$("reset").hidden=true;$("led").classList.remove("on");paint()}
+$("start").onclick=start;$("reset").onclick=reset;$("defuse").onclick=()=>end("safe");$("boom").onclick=()=>{SFX.snip();setTimeout(()=>end("boom"),120)};
+paint();
+$("mute").onclick=()=>{muted=!muted;$("mute").textContent=muted?"🔇 Sound off":"🔊 Sound on";if(!muted)SFX.tick()};
+const PIN="2026";
+try{if(sessionStorage.getItem("bt-ok")==="1")$("lock").hidden=true}catch(e){}
+$("lock").onsubmit=e=>{e.preventDefault();if($("pin").value===PIN){$("lock").hidden=true;try{sessionStorage.setItem("bt-ok","1")}catch(e){}}else{$("pinMsg").textContent="Wrong PIN.";$("pin").value=""}};
+</script>
+
+
+</body>
+</html>
